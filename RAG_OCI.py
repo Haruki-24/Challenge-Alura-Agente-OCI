@@ -13,7 +13,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
 # Reranking local y HuggingFace
 from sentence_transformers import CrossEncoder
@@ -37,18 +37,49 @@ if not GEMINI_API_KEY:
 
 # Configuración de proveedores según el diseño del desafío
 LLM_PROVIDER = "google"
-LLM_MODEL_NAME = "gemini-3.1-flash" 
+LLM_MODEL_NAME = "gemini-3.1-flash-lite" 
 
 EMBEDDING_PROVIDER = "huggingface"
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
 
-# Inicialización del modelo LLM
-print(f" Configurando LLM: {LLM_PROVIDER.upper()} ({LLM_MODEL_NAME})...")
-llm = ChatGoogleGenerativeAI(
-    model=LLM_MODEL_NAME,
-    temperature=0.1,  # Temperatura baja para garantizar decisiones lógicas y deterministas
-    google_api_key=GEMINI_API_KEY,
-)
+# Inicialización dinámica del modelo LLM
+print(f"Configurando LLM: {LLM_PROVIDER.upper()} ({LLM_MODEL_NAME})...")
+
+if LLM_PROVIDER == "google":
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("Falta GEMINI_API_KEY en el archivo .env")
+    llm = ChatGoogleGenerativeAI(
+        model=LLM_MODEL_NAME, 
+        temperature=0.1, 
+        google_api_key=api_key
+    )
+
+elif LLM_PROVIDER == "openai":
+    from langchain_openai import ChatOpenAI
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("Falta OPENAI_API_KEY en el archivo .env")
+    llm = ChatOpenAI(
+        model=LLM_MODEL_NAME, 
+        temperature=0.1, 
+        openai_api_key=api_key
+    )
+
+elif LLM_PROVIDER == "cohere":
+    from langchain_cohere import ChatCohere
+    api_key = os.getenv("COHERE_API_KEY")
+    if not api_key:
+        raise ValueError("Falta COHERE_API_KEY en el archivo .env")
+    llm = ChatCohere(
+        model=LLM_MODEL_NAME, 
+        temperature=0.1, 
+        cohere_api_key=api_key
+    )
+
+else:
+    raise ValueError(f"Proveedor de LLM no soportado: {LLM_PROVIDER}")
 
 
 # --- 2. PROCESADO DE DATOS Y VECTORIZACIÓN ----
@@ -466,11 +497,11 @@ if __name__ == "__main__":
         graph_bytes = grafo_operativo.get_graph().draw_mermaid_png()
         with open("flujo_agente_oci.png", "wb") as f:
             f.write(graph_bytes)
-        print("✅ Mapa visual de estados guardado exitosamente como 'flujo_agente_oci.png'.\n")
+        print(" Mapa visual de estados guardado exitosamente como 'flujo_agente_oci.png'.\n")
     except Exception as e:
-        print(f"⚠️ No se pudo renderizar la imagen (requiere dependencias de Mermaid): {e}\n")
+        print(f" No se pudo renderizar la imagen (requiere dependencias de Mermaid): {e}\n")
 
-# Definicion de formato de reporte
+# --- DEFINICIÓN DE FUNCIONES DE VISUALIZACIÓN ---
 def mostrar_resultado_formateado(resultado: Dict):
     """Renderiza el flujo de estados de OCI de forma legible por consola."""
     pregunta = resultado.get("pregunta", "")
@@ -496,19 +527,47 @@ def mostrar_resultado_formateado(resultado: Dict):
         for i, cit in enumerate(citaciones, 1):
             reporte += f"  [{i}] Fuente: '{cit}'\n"
 
-    reporte += "\n⚙️ OCI Agent RAG v2.5\n"
+    reporte += "\n OCI Agent RAG v2.5\n"
     reporte += "============================================================\n"
     print(reporte)
 
 
-    # Pruebas de ejemplos operativos
-    casos_prueba_operativa = [
-        "¿Que pozos tienen tareas de Mantenimiento estan porgramadas?",
-        "Estamos listos para iniciar pulling en el pozo PCP-04 pero hay tormenta eléctrica",
-        "¿Cuando es la intervencion de pulling del pozo P-404?"
-    ]
+def iniciar_consola_interactiva(grafo):
+    """Bucle interactivo para consultar al agente."""
+    print("\n" + "="*60)
+    print(" --- ASISTENTE OPERATIVO DE OCI --- ")
+    print("Escribe tu pregunta o escribe 'salir' para terminar.")
+    print("="*60)
 
-    for idx, consulta in enumerate(casos_prueba_operativa, 1):
-        print(f"\n🚀 EJECUTANDO CASO DE PRUEBA #{idx}...")
-        resultado_final = grafo_operativo.invoke({"pregunta": consulta})
-        mostrar_resultado_formateado(resultado_final)
+    while True:
+        pregunta_usuario = input("\n Ingresa tu pregunta ---> ")
+
+        if pregunta_usuario.lower() in ["salir", "exit", "quit"]:
+            print(" Agente finalizando. ¡Hasta pronto!")
+            break
+
+        if not pregunta_usuario.strip():
+            continue
+
+        print(" Procesando consulta...", flush=True)
+
+        try:
+            resultado_final = grafo.invoke({"pregunta": pregunta_usuario})
+            mostrar_resultado_formateado(resultado_final)
+        except Exception as e:
+            print(f" Ocurrió un error al procesar tu solicitud: {e}")
+
+
+# --- PUNTO DE ENTRADA PRINCIPAL ---
+if __name__ == "__main__":
+    # Generar el gráfico del flujo (opcional)
+    try:
+        graph_bytes = grafo_operativo.get_graph().draw_mermaid_png()
+        with open("flujo_agente_oci.png", "wb") as f:
+            f.write(graph_bytes)
+        print("✅ Mapa visual de estados guardado exitosamente como 'flujo_agente_oci.png'.\n")
+    except Exception as e:
+        print(f"⚠️ No se pudo renderizar la imagen: {e}\n")
+
+    # Iniciar el modo interactivo
+    iniciar_consola_interactiva(grafo_operativo)
