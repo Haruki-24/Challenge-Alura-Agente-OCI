@@ -11,7 +11,7 @@ st.caption("Tu asistente inteligente para la coordinación de campo.")
 if "messages" not in st.session_state:
     # Inicializa el historial con mensaje de bienvenida
     st.session_state.messages = [
-        {"role": "assistant", "content": "Buen día, soy el Asistente operativo de OCI. ¿EComo puedo ayudarte?"}
+        {"role": "assistant", "content": "Buen día, soy el Asistente operativo de OCI. ¿Como puedo ayudarte?"}
     ]
 
 # --- Historial de Mensajes ---
