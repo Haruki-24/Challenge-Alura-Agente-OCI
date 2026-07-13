@@ -9,7 +9,10 @@ Este repositorio contiene el desarrollo de OCI Agent, un agente de Inteligencia 
 ## 🎯 Consigna del Desafío (Alura Latam)
 El desafío consistió en desarrollar un Agente de Inteligencia Artificial Corporativo accesible para todos los colaboradores, capaz de centralizar y procesar múltiples formatos de archivo (PDF, Word, Excel, etc.) de diversos dominios organizacionales (RRHH, finanzas, legal, operaciones). El objetivo principal era transformarlo en una base de conocimiento conversacional, unificada y siempre disponible.
 
-## 🛠️ Solución Adoptada: Agente OCI
+## 🛠️ Solución Adoptada: Agente OCI 
+```html
+<video src="https://github.com/Haruki-24/Challenge-Alura-Agente-OCI/releases/download/v1.0.0/agente_oci_oil_and_gas_streamlit.mp4" controls width="100%"></video>
+```
 Aprovechando mi experiencia real en el sector y conociendo de primera mano las complejidades lógicas y operativas en los campos petroleros, decidí evitar un caso genérico y diseñar una infraestructura sumamente realista.
 
 Para ello, creé la empresa ficticia OCI, redactando y estructurando de manera consistente toda su documentación técnica (7 archivos PDF que incluyen planes de mantenimiento, programas de pulling, informes de stock y políticas de HSE). Sobre esta base de conocimiento de alta fidelidad, implementé un asistente técnico y de HSE de última generación que ejecuta un flujo de trabajo inteligente (Agentic Workflow):
