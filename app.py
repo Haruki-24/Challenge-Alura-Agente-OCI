@@ -1,5 +1,17 @@
+import os
 import streamlit as st
 from rag_agent_str import grafo_operativo 
+
+# --- Función para cargar documentos dinámicamente ---
+def obtener_documentos_activos(ruta_carpeta="data"):
+    # Si la carpeta no existe, devolvemos una lista vacía
+    if not os.path.exists(ruta_carpeta):
+        return []
+    
+    # Listar solo archivos con extensión .pdf
+    archivos = [f for f in os.listdir(ruta_carpeta) if f.endswith('.pdf')]
+    
+    return sorted(archivos) # Devuelve la lista ordenada alfabéticamente
 
 # --- Configuración de la Página ---
 # Cambiamos a layout="wide" para dar espacio a la barra lateral derecha
@@ -17,21 +29,17 @@ col_chat, col_info = st.columns([3, 1], gap="large")
 
 # --- BARRA LATERAL DERECHA (Panel de Información) ---
 with col_info:
-    st.markdown("### Documentos Cargados")
+    st.markdown("### 📂 Documentos Cargados")
     st.caption("Base de conocimiento activa del agente:")
     
-    # Lista de tus archivos PDF reales del proyecto
-    documentos = [
-        " Programa_mantenimiento.pdf",
-        " Programa_intervenciones_de_pulling.pdf",
-        " Politica_HSE_OCI.pdf",
-        " Procedimiento_y_protocolos_HSE_OCI.pdf",
-        " Inventario_herramientas_EPP.pdf",
-        " Procedimiento_supervisor_de_campo_OCI.pdf",
-        " Mision_vision_y_valores_OCI.pdf"
-    ]
-    for doc in documentos:
-        st.markdown(f"- `{doc}`")
+    # OBTENCIÓN DINÁMICA: Escanea la carpeta 'data' en cada recarga de la app
+    documentos = obtener_documentos_activos("data")
+    
+    if documentos:
+        for doc in documentos:
+            st.markdown(f"- `{doc}`")
+    else:
+        st.warning("⚠️ No se encontraron documentos en la carpeta 'data'.")
         
     st.markdown("---")
     
