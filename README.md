@@ -4,6 +4,8 @@
 ---
 Este repositorio contiene el desarrollo de OCI Agent, un agente de Inteligencia Artificial diseñado bajo una arquitectura de flujo de trabajo inteligente (Agentic Workflow). Este asistente operativo y de HSE está diseñado específicamente para coordinar y mitigar riesgos en la gestión operativa de campos petroleros, utilizando Gemini 3.1 Flash-Lite como motor de razonamiento y LangGraph para la orquestación estructurada de estados.
 
+**Version Cloud**: ¡Prueba el agente interactivo directamente en tu navegador! *[Agente OCI en Streamlit Cloud](https://agente-oil-and-gas-oci.streamlit.app/)*
+
 ## 🎯 Consigna del Desafío (Alura Latam)
 El desafío consistió en desarrollar un Agente de Inteligencia Artificial Corporativo accesible para todos los colaboradores, capaz de centralizar y procesar múltiples formatos de archivo (PDF, Word, Excel, etc.) de diversos dominios organizacionales (RRHH, finanzas, legal, operaciones). El objetivo principal era transformarlo en una base de conocimiento conversacional, unificada y siempre disponible.
 
@@ -40,9 +42,10 @@ El asistente operativo está diseñado bajo el concepto de **Human-in-the-loop (
 
 ## 🛠️ Stack Tecnológico
 Para garantizar la precisión semántica y la predictibilidad del flujo conversacional, se utilizaron las siguientes tecnologías:
+- **Interfaz de Usuario**: [Streamlit](https://streamlit.io/) (Para la construcción rápida y despliegue web de la aplicación interactiva).
 - **Orquestación de Agentes:** [LangGraph](https://github.com/langchain-ai/langgraph) (Flujos de trabajo basados en estados de alta predictibilidad).
 - **Modelo de Lenguaje (LLM):** Google Gemini 3.1 Flash-Lite (Motor principal de razonamiento rápido y eficiente con salidas estructuradas).
-- **Framework de Integración:** LangChain (Cadenas de combinación, cargadores de documentos y abstracción de prompts).
+- **Framework de Integración:** [LangChain](https://github.com/langchain/langchain) (Cadenas de combinación, cargadores de documentos y abstracción de prompts).
 - **Base de Datos Vectorial:** FAISS (Indexación y persistencia local eficiente).
 - **Modelos de Embeddings:** HuggingFace `intfloat/multilingual-e5-small` (Generación semántica local utilizando prefijos asimétricos).
 - **Modelo de Reranking:** Cross-Encoder `cross-encoder/ms-marco-MiniLM-L-6-v2` (Filtro de precisión semántica).
@@ -90,7 +93,7 @@ El flujo conversacional transiciona dinámicamente según el estado de la memori
 # 📂 Estructura del Proyecto
 
 ```text
-├── data/                                 # Documentos de Conocimiento de OCI
+├── data/                                      # Documentos de Conocimiento de OCI
 │   ├── Inventario_herramientas_EPP.pdf
 │   ├── Mision_vision_y_valores_OCI.pdf
 │   ├── Politica_HSE_OCI.pdf
@@ -98,18 +101,27 @@ El flujo conversacional transiciona dinámicamente según el estado de la memori
 │   ├── Procedimiento_y_protocolos_HSE_OCI.pdf
 │   ├── Programa_intervenciones_de_pulling.pdf
 │   └── Programa_mantenimiento.pdf
-├── faiss_index_oci/                      # Base de datos vectorial FAISS local persistida
+├── faiss_index_oci/                           # Base de datos vectorial FAISS local persistida
 │   ├── index.faiss
 │   └── index.pkl
-├── notebooks/                                 # Entornos de desarollo local Jupyter
+├── notebooks/                                 # Entornos de desarollo local Google Colab
 │   └── Challenge_Alura_Agente_RAG_V1.ipynb    # Archivo para desarrollo y prototipado
-├── .gitignore                                 # Configuración de exclusión de Git
-├── flujo_agente_oci.png                       # Diagrama de flujo de AGENTE
+├── .gitignore                                 
+├── app.py                                     # Archivo base para interfaz y ejecución de app en streamlit
+├── flujo_agente_oci.png                       
+├── rag_agent_str.py                           # Archivo logico de RAG para app en streamlit
 ├── RAG_OCI.py                                 # Archivo principal de AGENTE con consola interactiva
 ├── README.md                                  # Documentación de este repositorio
 └── requirements.txt                           # Archivo de dependencias del proyecto
 ```
 
+---
+🌐 Demo Interactiva en la Nube
+
+¿Quieres probar el agente sin configurar nada de forma local?
+
+Accede a la aplicación desde tu navegador web:
+👉 [Probar Demo en Vivo en Streamlit Cloud](https://agente-oil-and-gas-oci.streamlit.app/) 🚀
 ---
 
 # 🚀 Requisitos e Instalación Local
@@ -139,9 +151,18 @@ GEMINI_API_KEY="tu-api-key-de-gemini"
 ```
 
 ### 3. Ejecutar la Consola Interactiva
+
+* Opcion A:
 ```bash
 python RAG_OCI.py
+
 ```
+* Opcion B:
+```bash
+python streamlit run app.py
+
+```
+
 
 ---
 
@@ -156,8 +177,8 @@ Este script está completamente optimizado para funcionar tanto de forma local c
 
 ### 2. Configurar la API Key de forma segura
 Para no exponer tu API Key, utiliza la herramienta nativa de Google Colab:
-1. Abre el panel de **Secrets** (icono de llave de seguridad 🔑 en el panel de navegación izquierdo).
-2. Agrega una nueva clave llamada **`Gemini-GC`**.
+1. Abre el panel de **Secrets**.
+2. Agrega una nueva clave **`Gemini-API-key`** (Reemplazar en el archivo `Gemini-GC`")
 3. Pega tu API Key en el valor y activa la casilla **Notebook access**.
 
 ---
