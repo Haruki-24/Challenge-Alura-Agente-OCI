@@ -7,7 +7,7 @@ from rag_agent_gcp import grafo_operativo
 
 # --- CONFIGURACIÓN BASE DE LA PÁGINA ---
 st.set_page_config(
-    page_title="PETRO-ASSIST | Agente Operativo",
+    page_title="Assitente operativo | Agente OCI",
     page_icon="🛢️",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -187,7 +187,7 @@ with col_left:
     reiniciar = st.button("💬 INICIAR CONSULTA")
     if reiniciar:
         st.session_state.messages = [
-            {"role": "assistant", "content": "Bienvenido Juan, ¿en qué puedo ayudarte hoy?"}
+            {"role": "assistant", "content": "Bienvenido, ¿en qué puedo ayudarte hoy?"}
         ]
         st.rerun()
         
@@ -261,14 +261,14 @@ with col_mid:
     st.markdown("""
     <div style="background: linear-gradient(180deg, #0F1621 0%, #080D14 100%); border: 1px solid #3A5A70; border-radius: 4px; padding: 20px; min-height: 550px; box-shadow: inset 0 0 15px rgba(0,0,0,0.6);">
         <h4 style="border-bottom: 1px solid #3A5A70; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
-            <span>🤖</span> MONITOR ASISTENTE PETRO-ASSIST
+            <span>🤖</span> MONITOR ASISTENTE
         </h4>
     """, unsafe_allow_html=True)
     
     # Renderizar el historial de chat con las plantillas de alta fidelidad visual
     for message in st.session_state.messages:
         if message["role"] == "assistant":
-            # Burbuja estilo Petro-Assist (Cian)
+            # Burbuja estilo Assist (Cian)
             st.markdown(f"""
             <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-start;">
                 <div style="background: linear-gradient(135deg, #0a2533, #103b50); border: 2px solid #00E5FF; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(0,229,255,0.4); flex-shrink: 0;">
@@ -283,7 +283,7 @@ with col_mid:
             </div>
             """, unsafe_allow_html=True)
         else:
-            # Burbuja estilo Juan Pérez (Azul Marino / Alineado a la derecha)
+            # Burbuja estilo usuario (Azul Marino / Alineado a la derecha)
             st.markdown(f"""
             <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: flex-start; justify-content: flex-end;">
                 <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
