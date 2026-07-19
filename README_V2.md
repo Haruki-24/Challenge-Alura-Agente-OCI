@@ -1,6 +1,6 @@
 
-#  Agente OCI: Asistente operativo para Control de Operaciones Industriales
-## De Proyecto Piloto a Arquitectura Desacoplada Enterprise (v2.0)
+#  Agente OCI V2.0: Asistente operativo para Control de Operaciones Industriales
+## *De Proyecto Piloto a Arquitectura Desacoplada Enterprise (v2.0)*
 ---
 Este repositorio contiene la evolución avanzada del **Agente OCI**, diseñado específicamente para la coordinación y mitigación de riesgos en la gestión operativa de la industria petrolera.
 

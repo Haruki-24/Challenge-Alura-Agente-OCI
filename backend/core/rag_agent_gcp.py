@@ -1,166 +1,59 @@
 # --- 1. CONFIGURACIÓN E IMPORTACIONES ---
-
 import os
+import logging
 from pathlib import Path
 from typing import TypedDict, Optional, Dict, Literal, List
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
-# Componentes de LangChain para procesamiento, cargadores y vectores
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader, UnstructuredExcelLoader
-from langchain_community.document_loaders.merge import MergedDataLoader
+# Componentes de LangChain
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-
-# Reranking local y HuggingFace
-from sentence_transformers import CrossEncoder
 from langchain_huggingface import HuggingFaceEmbeddings
-from transformers import AutoTokenizer
+from sentence_transformers import CrossEncoder
 
-# Orquestador de agentes LangGraph
+# LangGraph
 from langgraph.graph import START, END, StateGraph
 
-# Carga de variables de entorno locales (.env)
-from dotenv import load_dotenv
 load_dotenv()
 
-# Validación de la clave API
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# --- CONSTANTES GLOBALES (pueden moverse a un config) ---
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if not GEMINI_API_KEY:
-    raise ValueError(
-        "¡Error! No se encontró la variable GEMINI_API_KEY en tu archivo '.env'.\n"
-        "Por favor, asegúrate de crear el archivo '.env' en la raíz con tus credenciales."
-    )
+    raise ValueError("Falta GEMINI_API_KEY en el archivo .env")
 
-# Configuración de proveedores según el diseño del desafío
-LLM_PROVIDER = "google"
-LLM_MODEL_NAME = "gemini-3.1-flash-lite" 
-
-EMBEDDING_PROVIDER = "huggingface"
+LLM_MODEL_NAME = "gemini-1.5-flash"  # o el que tengas disponible
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
+FAISS_DB_PATH = "./faiss_index_oci"
+REQUIERE_PREFIJO_E5 = "e5" in EMBEDDING_MODEL_NAME.lower()
 
-# Inicialización dinámica del modelo LLM
-print(f"Configurando LLM: {LLM_PROVIDER.upper()} ({LLM_MODEL_NAME})...")
-
-if LLM_PROVIDER == "google":
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("Falta GEMINI_API_KEY en el archivo .env")
-    llm = ChatGoogleGenerativeAI(
-        model=LLM_MODEL_NAME, 
-        temperature=0.1, 
-        google_api_key=api_key
-    )
-elif LLM_PROVIDER == "openai":
-    from langchain_openai import ChatOpenAI
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("Falta OPENAI_API_KEY en el archivo .env")
-    llm = ChatOpenAI(
-        model=LLM_MODEL_NAME, 
-        temperature=0.1, 
-        openai_api_key=api_key
-    )
-elif LLM_PROVIDER == "cohere":
-    from langchain_cohere import ChatCohere
-    api_key = os.getenv("COHERE_API_KEY")
-    if not api_key:
-        raise ValueError("Falta COHERE_API_KEY en el archivo .env")
-    llm = ChatCohere(
-        model=LLM_MODEL_NAME, 
-        temperature=0.1, 
-        cohere_api_key=api_key
-    )
-else:
-    raise ValueError(f"Proveedor de LLM no soportado: {LLM_PROVIDER}")
-
-
-# --- 2. PROCESADO DE DATOS Y VECTORIZACIÓN ----
-
-RUTA_DATOS = "./data/"
-documentos_oci = []
-
-if os.path.exists(RUTA_DATOS):
-    print(" Cargando documentos del almacén de datos local...")
-    loader_pdfs = DirectoryLoader(RUTA_DATOS, glob="*.pdf", loader_cls=PyPDFLoader)
-    loader_excel = DirectoryLoader(RUTA_DATOS, glob="*.xlsx", loader_cls=UnstructuredExcelLoader)
-    
-    all_loaders = MergedDataLoader(loaders=[loader_pdfs, loader_excel])
-    try:
-        documentos_oci = all_loaders.load()
-        print(f" Carga completada. Total de documentos en crudo: {len(documentos_oci)}")
-    except Exception as e:
-        print(f" ¡Error! cargando el set de datos: {e}")
-else:
-    print(f" *Alerta*: Carpeta '{RUTA_DATOS}' no encontrada. Créala en la raíz y coloca tus manuales.")
-
-retriever = None
-text_splitter = None
-REQUIERE_PREFIJO_E5 = (EMBEDDING_PROVIDER == "huggingface" and "e5" in EMBEDDING_MODEL_NAME.lower())
-
-if documentos_oci:
-    print(f" Configurando segmentación adaptada a {EMBEDDING_PROVIDER.upper()}...")
-    
-    if EMBEDDING_PROVIDER == "huggingface":
-        print(f" Descargando tokenizador local para '{EMBEDDING_MODEL_NAME}'...")
-        tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL_NAME)
-        text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
-            tokenizer=tokenizer,
-            chunk_size=400,
-            chunk_overlap=50
-        )
-    else:
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=400,
-            chunk_overlap=50
-        )
-
-    documentos_fragmentados = text_splitter.split_documents(documentos_oci)
-
-    if REQUIERE_PREFIJO_E5:
-        print(" Modelo E5 detectado. Aplicando prefijo 'passage: ' para indexación eficiente...")
-        for doc in documentos_fragmentados:
-            if not doc.page_content.startswith("passage: "):
-                doc.page_content = f"passage: {doc.page_content}"
-
-    print(" Generando representaciones vectoriales (Embeddings)...")
-    if EMBEDDING_PROVIDER == "huggingface":
-        embeddings_local = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL_NAME,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
-    else:
-        embeddings_local = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
-
-    print(" Indexando base de datos vectorial local FAISS...")
-    FAISS_DB_PATH = "./faiss_index_oci"
-    vectorstore = FAISS.from_documents(documentos_fragmentados, embeddings_local)
-    vectorstore.save_local(FAISS_DB_PATH)
-    
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
-    print(" Indexación completada y persistida de forma local.")
-
-print(" Inicializando modelo de Reranking de alta precisión (MiniLM-L-6-v2)...")
-reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
-
-
-#  --- 3. LÓGICA DE TRIAJE OPERATIVO (CLASIFICACIÓN CON VALIDACIÓN) ---
+# --- DEFINICIONES DE TIPOS Y MODELOS ---
+class AgentState(TypedDict):
+    pregunta: str
+    messages: List[BaseMessage]
+    pregunta_condensada: str
+    triaje: Dict
+    respuesta_RAG: Optional[str]
+    citaciones: Optional[List]
+    rag_exito: bool
+    accion_final: str
 
 class TriajeOperativoOut(BaseModel):
-    decision: Literal["AUTO_RESOLVER", "PEDIR_INFO", "ALERTAR_SUPERVISOR"] = Field(
-        description="Dirección lógica sugerida para procesar el caso en el flujo."
-    )
-    urgency: Literal["BAJA", "MEDIANA", "ALTA"] = Field(
-        description="Criticidad del evento o tarea reportada en campo."
-    )
-    motivo: str = Field(
-        description="Justificación detallada detrás de la categorización."
-    )
+    decision: Literal["AUTO_RESOLVER", "PEDIR_INFO", "ALERTAR_SUPERVISOR"]
+    urgency: Literal["BAJA", "MEDIANA", "ALTA"]
+    motivo: str
 
+class EvaluacionFidelidad(BaseModel):
+    fiel_al_contexto: bool
+    justificacion: str
+
+# --- PROMPTS ---
 PROMPT_TRIAJE_OPERATIVO = """
 Eres el Agente Inteligente de Triaje Operativo y de Riesgos en Campo (OCI).
 Tu tarea es analizar el mensaje del usuario y clasificarlo técnicamente de forma precisa.
@@ -190,49 +83,9 @@ Reglas de Urgencia (`urgency`):
 Devuelve SOLO el objeto JSON estructurado según el esquema solicitado.
 """
 
-chain_de_triaje_operativo = llm.with_structured_output(TriajeOperativoOut)
-
-def ejecutar_triaje_operativo(mensaje: str) -> Dict:
-    salida: TriajeOperativoOut = chain_de_triaje_operativo.invoke([
-        SystemMessage(content=PROMPT_TRIAJE_OPERATIVO),
-        HumanMessage(content=mensaje)
-    ])
-    return salida.model_dump()
-
-
-# --- 4. COMPONENTES RAG AVANZADO (RERANKING & EVALUACIÓN DE ALUCINACIONES) ---
-
-def ejecutar_reranking(query: str, documentos: list, top_n: int = 3) -> list:
-    if not documentos:
-        return []
-    pares = [[query, doc.page_content.replace("passage: ", "").strip()] for doc in documentos]
-    scores = reranker_model.predict(pares)
-    
-    documentos_con_score = list(zip(documentos, scores))
-    documentos_ordenados = sorted(documentos_con_score, key=lambda x: x[1], reverse=True)
-    return [doc for doc, score in documentos_ordenados[:top_n]]
-
-def ensamblar_contexto(documentos_reranked: list) -> tuple:
-    if not documentos_reranked:
-        return "No hay información contextual disponible.", []
-    
-    contexto_bloque = ""
-    citaciones_limpias = []
-    for idx, doc in enumerate(documentos_reranked, 1):
-        origen = doc.metadata.get('source', 'Desconocido').split('/')[-1] if 'source' in doc.metadata else doc.metadata.get('file_path', 'Documento')
-        pagina = doc.metadata.get('page', None)
-        
-        citacion_label = f"{origen} (Pág. {pagina + 1})" if pagina is not None else origen
-        citaciones_limpias.append(citacion_label)
-        
-        contenido = doc.page_content.replace("passage: ", "").strip()
-        contexto_bloque += f"--- [RECURSO {idx} | Fuente: {citacion_label}] ---\n{contenido}\n\n"
-    
-    return contexto_bloque, citaciones_limpias
-
-prompt_rag_operativo = ChatPromptTemplate([
+PROMPT_RAG_OPERATIVO = ChatPromptTemplate([
     ("system",
-     """
+      """
      Eres el Ingeniero de Soporte Operativo y Mentor de Seguridad (HSE) de la empresa OCI.
      Tu rol es responder la consulta utilizando únicamente el contexto documental provisto.
 
@@ -245,308 +98,322 @@ prompt_rag_operativo = ChatPromptTemplate([
     ("human", "Contexto técnico recuperado:\n{context}\n\nPregunta del operador en campo: {input}")
 ])
 
-document_chain_operativa = create_stuff_documents_chain(llm, prompt=prompt_rag_operativo)
+# --- CLASE PRINCIPAL ---
+class AgenteOperativoOCI:
+    def __init__(self):
+        """Inicializa el agente: modelos, índice FAISS, cadenas y grafo."""
+        self._inicializar_modelos()
+        self._cargar_indice_faiss()
+        self._inicializar_cadenas()
+        self._compilar_grafo()
+        logger.info("Agente OCI inicializado y listo.")
 
+    # ---------- INICIALIZACIÓN ----------
+    def _inicializar_modelos(self):
+        """Carga el LLM, embeddings y reranker."""
+        logger.info(f"Cargando LLM: {LLM_MODEL_NAME}")
+        self.llm = ChatGoogleGenerativeAI(
+            model=LLM_MODEL_NAME,
+            temperature=0.1,
+            google_api_key=GEMINI_API_KEY
+        )
 
-# --- GUARDRAIL DE ALUCINACIONES ---
-class EvaluacionFidelidad(BaseModel):
-    fiel_al_contexto: bool = Field(
-        description="True si la respuesta propuesta se basa exclusivamente en los documentos de soporte proporcionados."
-    )
-    justificacion: str = Field(
-        description="Explicación detallada de la auditoría."
-    )
+        logger.info(f"Cargando Embeddings: {EMBEDDING_MODEL_NAME}")
+        self.embeddings_local = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL_NAME,
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
+        )
 
-evaluador_alucinaciones = llm.with_structured_output(EvaluacionFidelidad)
+        logger.info("Cargando modelo de Reranking (CrossEncoder)...")
+        self.reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
 
-def validar_respuesta_frente_al_contexto(pregunta: str, contexto: str, respuesta: str) -> EvaluacionFidelidad:
-    prompt_evaluacion = f"""
-    Analiza rigurosamente si la 'Respuesta Propuesta' incurre en alucinaciones basadas en la información provista en el 'Contexto Técnico'.
+    def _cargar_indice_faiss(self):
+        """Carga el índice FAISS desde disco."""
+        if not os.path.exists(FAISS_DB_PATH):
+            raise FileNotFoundError(
+                f"No se encontró el índice FAISS en {FAISS_DB_PATH}. "
+                "Ejecute el script de indexación primero."
+            )
+        logger.info("Cargando índice vectorial local FAISS...")
+        self.vectorstore = FAISS.load_local(
+            FAISS_DB_PATH,
+            self.embeddings_local,
+            allow_dangerous_deserialization=True
+        )
+        self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 8})
+        logger.info("Índice FAISS cargado.")
 
-    EXCEPCIÓN DE SEGURIDAD CORPORATIVA (CRÍTICO):
-    Los recordatorios obligatorios de seguridad (HSE) y advertencias de que "el Supervisor de Campo tiene la decisión final" son políticas operativas generales requeridas en todas las respuestas de OCI. NO debes considerarlos como una alucinación bajo ningún motivo, incluso si esas palabras exactas no se mencionan en el 'Contexto Técnico'.
-    Solo debes calificar la respuesta como infiel (False) si inventa hechos técnicos concretos (como fechas de pulling falsas, números de pozos inexistentes en el contexto, stock de herramientas inventado, etc.).
+    def _inicializar_cadenas(self):
+        """Crea las cadenas con salida estructurada y la cadena RAG."""
+        self.chain_triaje = self.llm.with_structured_output(TriajeOperativoOut)
+        self.chain_evaluador = self.llm.with_structured_output(EvaluacionFidelidad)
+        # La cadena RAG se crea con la plantilla global
+        self.document_chain = create_stuff_documents_chain(self.llm, PROMPT_RAG_OPERATIVO)
 
-    [Contexto Técnico]
-    {contexto}
+    # ---------- MÉTODOS AUXILIARES ----------
+    def _ejecutar_reranking(self, query: str, documentos: list, top_n: int = 3) -> list:
+        """Reordena los documentos mediante CrossEncoder."""
+        if not documentos:
+            return []
+        pares = [
+            [query, doc.page_content.replace("passage: ", "").strip()]
+            for doc in documentos
+        ]
+        scores = self.reranker_model.predict(pares)
+        documentos_con_score = list(zip(documentos, scores))
+        documentos_ordenados = sorted(documentos_con_score, key=lambda x: x[1], reverse=True)
+        return [doc for doc, _ in documentos_ordenados[:top_n]]
 
-    [Pregunta del Operador]
-    {pregunta}
+    def _ensamblar_contexto(self, documentos_reranked: list) -> tuple:
+        """Convierte los documentos en un bloque de texto y lista de citas."""
+        if not documentos_reranked:
+            return "No hay información contextual disponible.", []
 
-    [Respuesta Propuesta]
-    {respuesta}
+        contexto_bloque = ""
+        citaciones_limpias = []
+        for idx, doc in enumerate(documentos_reranked, 1):
+            origen = doc.metadata.get('source', 'Desconocido').split('/')[-1]
+            pagina = doc.metadata.get('page')
+            citacion_label = f"{origen} (Pág. {pagina+1})" if pagina is not None else origen
+            citaciones_limpias.append(citacion_label)
+            contenido = doc.page_content.replace("passage: ", "").strip()
+            contexto_bloque += f"--- [RECURSO {idx} | Fuente: {citacion_label}] ---\n{contenido}\n\n"
+        return contexto_bloque, citaciones_limpias
 
-    Devuelve la evaluación estructurada según el esquema solicitado.
-    """
-    return evaluador_alucinaciones.invoke(prompt_evaluacion)
+    def _validar_respuesta(self, pregunta: str, contexto: str, respuesta: str) -> EvaluacionFidelidad:
+        """Evalúa si la respuesta es fiel al contexto."""
+        prompt_eval = f"""
+        Analiza rigurosamente si la 'Respuesta Propuesta' incurre en alucinaciones...
+        [Contexto Técnico]
+        {contexto}
 
-def resolver_con_rag_avanzado(pregunta: str) -> Dict:
-    if not retriever:
-        return {
-            "respuesta": "No cuento con registros técnicos suficientes en mis manuales para resolver esta consulta de forma segura.",
-            "citaciones": [],
-            "rag_exito": False,
-            "motivo_fallo": "Búsqueda vectorial no inicializada por falta de documentos."
-        }
-    
-    candidatos = retriever.invoke(pregunta) if not REQUIERE_PREFIJO_E5 else retriever.invoke(f"query: {pregunta}")
-    documentos_filtrados = ejecutar_reranking(pregunta, candidatos, top_n=3)
-    
-    if not documentos_filtrados:
-        return {
-            "respuesta": "No cuento con registros técnicos suficientes en mis manuales para resolver esta consulta de forma segura.",
-            "citaciones": [],
-            "rag_exito": False,
-            "motivo_fallo": "No se encontraron documentos candidatos relevantes."
-        }
-    
-    contexto_final, citaciones = ensamblar_contexto(documentos_filtrados)
-    respuesta_ia = document_chain_operativa.invoke({
-        "input": pregunta,
-        "context": documentos_filtrados
-    })
-    
-    if "no cuento con registros técnicos" in respuesta_ia.lower():
+        [Pregunta del Operador]
+        {pregunta}
+
+        [Respuesta Propuesta]
+        {respuesta}
+
+        Devuelve la evaluación estructurada según el esquema solicitado.
+        """
+        return self.chain_evaluador.invoke(prompt_eval)
+
+    def _ejecutar_triaje(self, mensaje: str) -> Dict:
+        """Realiza el triaje y devuelve el diccionario con decisión, urgencia y motivo."""
+        salida: TriajeOperativoOut = self.chain_triaje.invoke([
+            SystemMessage(content=PROMPT_TRIAJE_OPERATIVO),
+            HumanMessage(content=mensaje)
+        ])
+        return salida.model_dump()
+
+    def _resolver_con_rag(self, pregunta: str) -> Dict:
+        """Ejecuta la recuperación, reranking, generación y validación."""
+        if not self.retriever:
+            return {
+                "respuesta": "No cuento con registros técnicos suficientes...",
+                "citaciones": [],
+                "rag_exito": False,
+                "motivo_fallo": "Búsqueda vectorial no inicializada."
+            }
+
+        # 1) Recuperación
+        query = f"query: {pregunta}" if REQUIERE_PREFIJO_E5 else pregunta
+        candidatos = self.retriever.invoke(query)
+
+        # 2) Reranking
+        filtrados = self._ejecutar_reranking(pregunta, candidatos, top_n=3)
+        if not filtrados:
+            return {
+                "respuesta": "No cuento con registros técnicos suficientes...",
+                "citaciones": [],
+                "rag_exito": False,
+                "motivo_fallo": "No se encontraron documentos relevantes."
+            }
+
+        # 3) Ensamblar contexto y generar respuesta
+        contexto, citas = self._ensamblar_contexto(filtrados)
+        respuesta_ia = self.document_chain.invoke({
+            "input": pregunta,
+            "context": filtrados   # create_stuff_documents_chain espera una lista de documentos
+        })
+
+        if "no cuento con registros técnicos" in respuesta_ia.lower():
+            return {
+                "respuesta": respuesta_ia,
+                "citaciones": [],
+                "rag_exito": False,
+                "motivo_fallo": "La base de conocimientos no cubre el procedimiento."
+            }
+
+        # 4) Guardrail de alucinaciones
+        evaluacion = self._validar_respuesta(pregunta, contexto, respuesta_ia)
+        if not evaluacion.fiel_al_contexto:
+            logger.warning(f"Bloqueada respuesta infiel: {evaluacion.justificacion}")
+            return {
+                "respuesta": "No cuento con registros técnicos suficientes...",
+                "citaciones": [],
+                "rag_exito": False,
+                "motivo_fallo": f"Alucinación detectada: {evaluacion.justificacion}"
+            }
+
         return {
             "respuesta": respuesta_ia,
-            "citaciones": [],
-            "rag_exito": False,
-            "motivo_fallo": "La base de conocimientos no cubre el procedimiento solicitado."
+            "citaciones": citas,
+            "rag_exito": True
         }
-    
-    evaluacion = validar_respuesta_frente_al_contexto(pregunta, contexto_final, respuesta_ia)
-    if not evaluacion.fiel_al_contexto:
-        print(f" [Filtro de Alucinación] Bloqueada respuesta infiel: {evaluacion.justificacion}")
+
+    # ---------- NODOS DEL GRAFO ----------
+    def nodo_condensar_pregunta(self, state: AgentState) -> Dict:
+        """Reescribe la pregunta teniendo en cuenta el historial."""
+        historial = state.get("messages", [])
+        ultima = state["pregunta"]
+        if len(historial) <= 1:
+            return {"pregunta_condensada": ultima}
+
+        prompt_memoria = ChatPromptTemplate.from_messages([
+            ("system", (
+                "Dada la siguiente conversación histórica en un entorno industrial (OCI) y una nueva pregunta de seguimiento, "
+                "reescríbela para que sea una pregunta independiente y clara. Debe contener de forma explícita nombres de pozos, "
+                "equipos, herramientas o incidentes de seguridad mencionados anteriormente. NO respondas la consulta, solo redáctala de nuevo de forma técnica."
+            )),
+            ("placeholder", "{chat_history}"),
+            ("human", "Pregunta de seguimiento: {input}")
+        ])
+        cadena = prompt_memoria | self.llm
+        respuesta = cadena.invoke({
+            "chat_history": historial[:-1],
+            "input": ultima
+        })
+        return {"pregunta_condensada": respuesta.content}
+
+    def nodo_triaje(self, state: AgentState) -> Dict:
+        logger.info("[NODO: Triaje] Analizando riesgos de la consulta...")
+        resultado = self._ejecutar_triaje(state["pregunta_condensada"])
+        return {"triaje": resultado}
+
+    def nodo_auto_resolver(self, state: AgentState) -> Dict:
+        logger.info("[NODO: Auto-Resolver] Consultando manuales técnicos...")
+        resultado = self._resolver_con_rag(state["pregunta_condensada"])
         return {
-            "respuesta": "No cuento con registros técnicos suficientes en mis manuales para resolver esta consulta de forma segura.",
+            "respuesta_RAG": resultado["respuesta"],
+            "citaciones": resultado["citaciones"],
+            "rag_exito": resultado["rag_exito"],
+            "accion_final": "RESOLUCIÓN_AUTOMÁTICA" if resultado["rag_exito"] else "ESCALADO"
+        }
+
+    def nodo_pedir_info(self, state: AgentState) -> Dict:
+        logger.info("[NODO: Solicitar Detalles] Formulando plantilla...")
+        motivo = state["triaje"].get("motivo", "Falta de información clave.")
+        respuesta = (
+            f"**ASISTENTE OCI**: Necesitamos datos adicionales para poder asesorarte.\n"
+            f"**Razón**: {motivo}\n\n"
+            f"Por favor, facilítanos la siguiente información si aplica:\n"
+            f"- ID o Nombre del Pozo (ej. Pozo PCP-04)\n"
+            f"- Tipo de mantenimiento / Herramienta involucrada\n"
+            f"- ¿Se encuentra en zona de riesgo o bajo condiciones climáticas adversas?"
+        )
+        return {
+            "respuesta_RAG": respuesta,
             "citaciones": [],
             "rag_exito": False,
-            "motivo_fallo": f"Alucinación detectada: {evaluacion.justificacion}"
+            "accion_final": "SOLICITAR_DETALLES"
         }
-    
-    return {
-        "respuesta": respuesta_ia,
-        "citaciones": citaciones,
-        "rag_exito": True
-    }
 
+    def nodo_alertar_supervisor(self, state: AgentState) -> Dict:
+        logger.info("[NODO: Alerta Supervisor] Protocolo HITL...")
+        resultado = self._resolver_con_rag(state["pregunta_condensada"])
+        propuesta = resultado["respuesta"] if resultado["rag_exito"] else "No se encontraron manuales específicos para este escenario crítico."
 
-# --- 5. ORQUESTACIÓN DE AGENTE CON LANGGRAPH Y MEMORIA CONVERSACIONAL ---
+        alerta = (
+            f"**ALERTA DE SEGURIDAD / ESCENARIO CRÍTICO DETECTADO**\n"
+            f"**Urgencia**: {state['triaje'].get('urgency', 'ALTA')}\n"
+            f"**Motivo**: {state['triaje'].get('motivo', 'Riesgo Técnico')}\n"
+            f"----------------------------------------------------------------------\n"
+            f"**Recomendación Asistida por IA (Basada en datos)**:\n"
+            f"{propuesta}\n"
+            f"----------------------------------------------------------------------\n"
+            f"**PROTOCOLO HUMAN-IN-THE-LOOP (HITL)**:\n"
+            f"Esta consulta involucra operaciones con riesgos potenciales o decisiones de alta prioridad.\n"
+            f"**Supervisor asignado**: Por favor evalúe el estado climático actual, el equipo de protección (EPP) y valide físicamente el procedimiento antes de autorizar la maniobra en campo.\n\n"
+            f"**[ ] Aprobar Operación   |   [ ] Reconducir Protocolo   |   [ ] Solicitar Verificación de Campo**"
+        )
+        return {
+            "respuesta_RAG": alerta,
+            "citaciones": resultado["citaciones"],
+            "rag_exito": resultado["rag_exito"],
+            "accion_final": "ALERTA_SUPERVISOR_HITL"
+        }
 
-class AgentState(TypedDict):
-    """Bus de memoria compartida con soporte nativo para historial de chat."""
-    pregunta: str                      # La última pregunta cruda del usuario
-    messages: List[BaseMessage]        # Historial completo de la sesión de chat
-    pregunta_condensada: str           # Pregunta reescrita contextualizada históricamente
-    triaje: Dict
-    respuesta_RAG: Optional[str]
-    citaciones: Optional[List]
-    rag_exito: bool
-    accion_final: str
+    # ---------- ARISTAS CONDICIONALES ----------
+    def arista_decision_triaje(self, state: AgentState) -> str:
+        decision = state["triaje"]["decision"]
+        mapping = {
+            "AUTO_RESOLVER": "ir_a_rag",
+            "PEDIR_INFO": "ir_a_detalles",
+            "ALERTAR_SUPERVISOR": "ir_a_alerta"
+        }
+        return mapping[decision]
 
-
-# --- DEFINICION DE NODOS DEL GRAFO ---
-
-def nodo_condensar_pregunta(state: AgentState) -> Dict:
-    """Revisa el historial acumulado en el estado y unifica el contexto."""
-    historial = state.get("messages", [])
-    ultima_pregunta = state["pregunta"]
-    
-    # Si es el primer mensaje del chat, no hay nada que condensar
-    if len(historial) <= 1:
-        return {"pregunta_condensada": ultima_pregunta}
-    
-    prompt_memoria = ChatPromptTemplate.from_messages([
-        ("system", (
-            "Dada la siguiente conversación histórica en un entorno industrial (OCI) y una nueva pregunta de seguimiento, "
-            "reescríbela para que sea una pregunta independiente y clara. Debe contener de forma explícita nombres de pozos, "
-            "equipos, herramientas o incidentes de seguridad mencionados anteriormente. NO respondas la consulta, solo redáctala de nuevo de forma técnica."
-        )),
-        ("placeholder", "{chat_history}"),
-        ("human", "Pregunta de seguimiento: {input}")
-    ])
-    
-    cadena_memoria = prompt_memoria | llm
-    pregunta_rica = cadena_memoria.invoke({
-        "chat_history": historial[:-1], # Excluimos el último mensaje para evitar redundancia
-        "input": ultima_pregunta
-    })
-    
-    return {"pregunta_condensada": pregunta_rica.content}
-
-
-def nodo_triaje_operaciones(state: AgentState) -> AgentState:
-    print("[NODO: Triaje] Analizando riesgos de la consulta...")
-    # Realizamos el triaje sobre la pregunta condensada para capturar el contexto real histórico
-    resultado_triaje = ejecutar_triaje_operativo(state["pregunta_condensada"])
-    return {"triaje": resultado_triaje}
-
-
-def nodo_auto_resolver_operaciones(state: AgentState) -> AgentState:
-    print("[NODO: Auto-Resolver] Consultando manuales técnicos...")
-    # El RAG, Reranker y Guardrails operan sobre la pregunta condensada con memoria
-    resultado_rag = resolver_con_rag_avanzado(state["pregunta_condensada"])
-    return {
-        "respuesta_RAG": resultado_rag["respuesta"],
-        "citaciones": resultado_rag["citaciones"],
-        "rag_exito": resultado_rag["rag_exito"],
-        "accion_final": "RESOLUCIÓN_AUTOMÁTICA" if resultado_rag["rag_exito"] else "ESCALADO"
-    }
-
-
-def nodo_solicitar_detalles(state: AgentState) -> AgentState:
-    print("[NODO: Solicitar Detalles] Formulando plantilla de requerimientos...")
-    motivo = state["triaje"].get("motivo", "Falta de información clave.")
-    respuesta = (
-        f"**ASISTENTE OCI**: Necesitamos datos adicionales para poder asesorarte.\n"
-        f"**Razón**: {motivo}\n\n"
-        f"Por favor, facilítanos la siguiente información si aplica:\n"
-        f"- ID o Nombre del Pozo (ej. Pozo PCP-04)\n"
-        f"- Tipo de mantenimiento / Herramienta involucrada\n"
-        f"- ¿Se encuentra en zona de riesgo o bajo condiciones climáticas adversas?"
-    )
-    return {
-        "respuesta_RAG": respuesta,
-        "citaciones": [],
-        "rag_exito": False,
-        "accion_final": "SOLICITAR_DETALLES"
-    }
-
-
-def nodo_alertar_supervisor(state: AgentState) -> AgentState:
-    print("[NODO: Alerta Supervisor] Ejecutando protocolo de seguridad HITL (Human-in-the-Loop)...")
-    resultado_rag = resolver_con_rag_avanzado(state["pregunta_condensada"])
-    propuesta_datos = resultado_rag["respuesta"] if resultado_rag["rag_exito"] else "No se encontraron manuales específicos para este escenario crítico o la propuesta no superó los controles de seguridad de alucinación."
-
-    alerta_hitl = (
-        f"**ALERTA DE SEGURIDAD / ESCENARIO CRÍTICO DETECTADO** \n"
-        f"**Urgencia**: {state['triaje'].get('urgency', 'ALTA')} "
-        f" **Motivo**: {state['triaje'].get('motivo', 'Riesgo Técnico')}\n"
-        f"----------------------------------------------------------------------\n"
-        f"**Recomendación Asistida por IA (Basada en datos)**:\n"
-        f"{propuesta_datos}\n"
-        f"----------------------------------------------------------------------\n"
-        f"**PROTOCOLO HUMAN-IN-THE-LOOP (HITL)**:\n"
-        f"Esta consulta involucra operaciones con riesgos potenciales o decisiones de alta prioridad.\n"
-        f"**Supervisor asignado**: Por favor evalúe el estado climático actual, el equipo de protección (EPP) y valide físicamente el procedimiento antes de autorizar la maniobra en campo.\n\n"
-        f"**[ ] Aprobar Operación   |   [ ] Reconducir Protocolo   |   [ ] Solicitar Verificación de Campo**"
-    )
-
-    return {
-        "respuesta_RAG": alerta_hitl,
-        "citaciones": resultado_rag["citaciones"],
-        "rag_exito": resultado_rag["rag_exito"],
-        "accion_final": "ALERTA_SUPERVISOR_HITL"
-    }
-
-
-# --- DEFINICION DE ARISTAS CONDICIONALES ---
-
-def arista_decision_triaje(state: AgentState) -> str:
-    decision = state["triaje"]["decision"]
-    if decision == "AUTO_RESOLVER":
-        return "ir_a_rag"
-    elif decision == "PEDIR_INFO":
+    def arista_evaluacion_rag(self, state: AgentState) -> str:
+        if state["rag_exito"]:
+            return "finalizar"
+        # Si falló el RAG y la consulta es sensible, escalar a supervisor
+        palabras_criticas = ["riesgo", "accidente", "emergencia", "pulling", "tensión", "daño", "parada", "tormenta", "viento"]
+        if any(p in state["pregunta_condensada"].lower() for p in palabras_criticas):
+            logger.info("Fallo de RAG en tema sensible. Escalando a Supervisor.")
+            return "ir_a_alerta"
         return "ir_a_detalles"
-    elif decision == "ALERTAR_SUPERVISOR":
-        return "ir_a_alerta"
-    raise ValueError(f"Decisión inválida: {decision}")
 
+    # ---------- COMPILACIÓN DEL GRAFO ----------
+    def _compilar_grafo(self):
+        """Construye y compila el grafo LangGraph."""
+        workflow = StateGraph(AgentState)
 
-def arista_evaluacion_rag(state: AgentState) -> str:
-    if state["rag_exito"]:
-        return "finalizar"
-    
-    palabras_criticas = ["riesgo", "accidente", "emergencia", "pulling", "tensión", "daño", "parada", "tormenta", "viento"]
-    if any(p in state["pregunta_condensada"].lower() for p in palabras_criticas):
-        print(" -> Fallo de recuperación o guardrail en tema sensible. Escalando a Supervisor.")
-        return "ir_a_alerta"
-    return "ir_a_detalles"
+        # Nodos
+        workflow.add_node("condensar_pregunta", self.nodo_condensar_pregunta)
+        workflow.add_node("triaje", self.nodo_triaje)
+        workflow.add_node("auto_resolver", self.nodo_auto_resolver)
+        workflow.add_node("pedir_info", self.nodo_pedir_info)
+        workflow.add_node("alertar_supervisor", self.nodo_alertar_supervisor)
 
+        # Flujo principal
+        workflow.add_edge(START, "condensar_pregunta")
+        workflow.add_edge("condensar_pregunta", "triaje")
 
-# --- CONSTRUCCIÓN DEL GRAFO ---
+        workflow.add_conditional_edges(
+            "triaje",
+            self.arista_decision_triaje,
+            {
+                "ir_a_rag": "auto_resolver",
+                "ir_a_detalles": "pedir_info",
+                "ir_a_alerta": "alertar_supervisor"
+            }
+        )
 
-workflow_operativo = StateGraph(AgentState)
+        workflow.add_conditional_edges(
+            "auto_resolver",
+            self.arista_evaluacion_rag,
+            {
+                "finalizar": END,
+                "ir_a_alerta": "alertar_supervisor",
+                "ir_a_detalles": "pedir_info"
+            }
+        )
 
-# Registrar nodos (añadiendo la condensación al inicio)
-workflow_operativo.add_node("condensar_pregunta", nodo_condensar_pregunta)
-workflow_operativo.add_node("triaje", nodo_triaje_operaciones)
-workflow_operativo.add_node("auto_resolver", nodo_auto_resolver_operaciones)
-workflow_operativo.add_node("pedir_info", nodo_solicitar_detalles)
-workflow_operativo.add_node("alertar_supervisor", nodo_alertar_supervisor)
+        workflow.add_edge("pedir_info", END)
+        workflow.add_edge("alertar_supervisor", END)
 
-# Definir punto de entrada hacia el nodo de memoria
-workflow_operativo.add_edge(START, "condensar_pregunta")
+        self.grafo = workflow.compile()
+        logger.info("Grafo LangGraph compilado correctamente.")
 
-# Enlace de la memoria hacia el triaje estratégico
-workflow_operativo.add_edge("condensar_pregunta", "triaje")
-
-# Flujos condicionales desde el triaje
-workflow_operativo.add_conditional_edges(
-    "triaje",
-    arista_decision_triaje,
-    {
-        "ir_a_rag": "auto_resolver",
-        "ir_a_detalles": "pedir_info",
-        "ir_a_alerta": "alertar_supervisor"
-    }
-)
-
-# Flujos condicionales desde el RAG
-workflow_operativo.add_conditional_edges(
-    "auto_resolver",
-    arista_evaluacion_rag,
-    {
-        "finalizar": END,
-        "ir_a_alerta": "alertar_supervisor",
-        "ir_a_detalles": "pedir_info"
-    }
-)
-
-# Transiciones de cierre directo
-workflow_operativo.add_edge("pedir_info", END)
-workflow_operativo.add_edge("alertar_supervisor", END)
-
-# Compilación final del motor del Agente
-grafo_operativo = workflow_operativo.compile()
-
-
-# --- BUCLE DE PRUEBA LOCAL CON HISTORIAL ---
-if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("🚀 Probador Local del Cerebro con Memoria - OCI Core")
-    print("Escribe 'salir' para finalizar.")
-    print("="*60 + "\n")
-    
-    historial_memoria = []
-    
-    while True:
-        user_input = input("Operador en Campo ---> ")
-        if user_input.lower() in ["salir", "exit", "quit"]:
-            break
-            
-        if not user_input.strip():
-            continue
-            
-        # 1. Agregamos el mensaje del operario a la lista histórica
-        historial_memoria.append(HumanMessage(content=user_input))
-        
-        # 2. Invocamos el grafo pasándole tanto la pregunta actual como la lista
+    # ---------- MÉTODO PÚBLICO ----------
+    def procesar_consulta(self, pregunta: str, historial: List[BaseMessage] = None) -> Dict:
+        """Punto de entrada para el usuario. Retorna el estado final."""
+        if historial is None:
+            historial = []
         inputs = {
-            "pregunta": user_input,
-            "messages": historial_memoria
+            "pregunta": pregunta,
+            "messages": historial + [HumanMessage(content=pregunta)]
         }
-        
-        resultado = grafo_operativo.invoke(inputs)
-        
-        print("\n⚡ [REGISTRO DE FLUJO INTERNO]")
-        print(f"-> Consulta Condensada: '{resultado['pregunta_condensada']}'")
-        print(f"-> Triaje: {resultado['triaje']['decision']} | Urgencia: {resultado['triaje']['urgency']}")
-        print(f"-> Motivo: {resultado['triaje']['motivo']}")
-        print(f"-> Citaciones: {resultado.get('citaciones', [])}\n")
-        
-        print(resultado["respuesta_RAG"])
-        print("\n" + "="*60 + "\n")
-        
-        # 3. Guardamos la respuesta final de la IA en la memoria para el contexto del siguiente turno
-        historial_memoria.append(AIMessage(content=resultado["respuesta_RAG"]))
+        return self.grafo.invoke(inputs)
+
