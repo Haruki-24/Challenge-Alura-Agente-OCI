@@ -1,15 +1,14 @@
 
 #  Agente OCI: Asistente operativo para Control de Operaciones Industriales
----
 ## De Proyecto Piloto a Arquitectura Desacoplada Enterprise (v2.0)
 ---
-Este repositorio contiene la evolución avanzada del Agente OCI, un sistema de Inteligencia Artificial corporativo diseñado específicamente para la coordinación y mitigación de riesgos en la gestión operativa de campos petroleros.
+Este repositorio contiene la evolución avanzada del **Agente OCI**, diseñado específicamente para la coordinación y mitigación de riesgos en la gestión operativa de la industria petrolera.
 
-A partir de un desafío original propuesto por Alura Latam (consistente en centralizar documentación corporativa en una base de conocimiento conversacional), este proyecto se desprendió de su fase piloto para convertirse en un entorno experimental de nivel industrial. El objetivo actual es aplicar y demostrar habilidades profesionales reales de ingeniería de software y MLOps, migrando de un script unificado a una arquitectura de microservicios desacoplada optimizada para la nube (Google Cloud Platform) y canales de mensajería en campo (Telegram).
+Lo que comenzó como una solución para un desafío propuesto por **Alura Latam** — enfocado en centralizar documentación corporativa, y así poder brindar respuestas y recomendaciones de acuerdo a la base de conocimientos — se ha transformado aquí en un entorno experimental de nivel industrial. El propósito de esta versión 2.0 es aplicar y demostrar **competencias profesionales reales de Ingeniería de Software y MLOps**, migrando de un script unificado (monolítico) a una **arquitectura de microservicios desacoplada** diseñada para escalar en la nube (Google Cloud Platform) y operar en canales de mensajería en campo (Telegram)
 
-**Agente OCI V1.0**: Puedes revisar el comportamiento del MVP inicial aquí: **[Agente-OCI-V1.0 en Streamlit](https://agente-oil-and-gas-oci.streamlit.app/)**
-
-**Si quieres saber más puedes acceder al readme del repositorio principal [Agente-OCI-V1.0](https://github.com/Haruki-24/Challenge-Alura-Agente-OCI/blob/main/README.md)**
+### 🔍 Accesos Rápidos del Proyecto
+*   🚀 **[Demo del MVP Inicial en Streamlit Cloud](https://agente-oil-and-gas-oci.streamlit.app/)**
+*   📄 **[Documentación del Piloto Original (Readme v1.0)](https://github.com/Haruki-24/Challenge-Alura-Agente-OCI/blob/main/README.md)**
 
 ---
 
@@ -26,10 +25,10 @@ Aprovechando la experiencia real en el sector energético y las complejidades l�
 
 ## 🚀 Evolución del Agente: Piloto vs. Producción Real
 
-Este repositorio contiene la versión v2.0 de AGENTE OCI, un asiistente operativo virtual diseñado para la industria de Oil & Gas (bajo el contexto de la empresa ficticia OCI - Operations Control Industrial).
+El objetivo de esta nueva versión es romper con el esquema tradicional del piloto —restringido únicamente al entorno web— para poder explotar el potencial del agente de forma práctica durante las operaciones en campo, añadiendo uno de los canales más comunes y de mayor acceso como es Telegram. 
 
-Arquitectura Desacoplada de Microservicios para la Gestión de Riesgos e Inteligencia RAG en Campo
-Para demostrar competencias de arquitectura robusta, el proyecto ha sido completamente rediseñado y desacoplado en dos microservicios independientes que interactúan mediante APIs síncronas. Esto permite un escalamiento eficiente, reduce la deuda técnica y sienta las bases para despliegues Serverless en Google Cloud Platform (GCP) e integraciones con n8n y Telegram.
+Para lograrlo, el agente ha sido completamente rediseñado bajo una **arquitectura desacoplada de microservicios dedicada a la gestión de riesgos e inteligencia RAG en campo**. A través de dos componentes independientes que interactúan mediante APIs síncronas, se reduce drásticamente la deuda técnica y se prepara el terreno para despliegues Serverless en GCP e integraciones de misión crítica (Web HUD y Telegram mediante n8n). Así, se consolida como un asistente operativo virtual robusto y adaptado a las exigencias reales de la industria de Oil & Gas (bajo el contexto de la empresa ficticia OCI - Operations Control Industrial).
+
 
 ```
 Challenge-Alura-Agente-OCI/
@@ -70,11 +69,11 @@ Challenge-Alura-Agente-OCI/
 ## 📂 Estructura del Repositorio
 
 El proyecto se divide de manera limpia en:
- - backend/: Contiene el core del agente (core/rag_agent_gcp.py) que maneja los estados del grafo. Utiliza FastAPI (main.py) para exponer los endpoints de consulta que alimentarán tanto a la web como a los webhooks de Telegram.
+ - **`backend/`**: Contiene el core del agente (`core/rag_agent_gcp.py`) que maneja los estados del grafo. Utiliza FastAPI (`main.py`) para exponer los endpoints de consulta que alimentarán tanto a la web como a los webhooks de Telegram.
 
- - frontend/: Aloja una interfaz web de estilo militar/industrial denominada PETRO-ASSIST, construida en Streamlit (app.py), diseñada específicamente para la auditoría de procesos por parte de los supervisores e ingenieros de oficina.
+ - **`frontend/`**: Aloja una interfaz web de estilo industrial denominada *AGENTE-OCI*, construida en Streamlit (`app.py`), diseñada específicamente para la auditoría de procesos por parte de los supervisores e ingenieros de oficina.
 
- - data/ & faiss_index_oci/: Los documentos técnicos y los índices vectoriales serializados que sirven de conocimiento al agente.
+ - **`data/`** & **`faiss_index_oci/`**: Los documentos técnicos y los índices vectoriales serializados que sirven de conocimiento al agente.
 
 ```text
 Challenge-Alura-Agente-OCI/
