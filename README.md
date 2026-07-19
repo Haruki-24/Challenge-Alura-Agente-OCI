@@ -1,6 +1,6 @@
 *Challenge-Alura-Agente-OCI*
 ---
-# **Agente OCI: Inteligencia Artificial para Control de Operaciones Industriales**
+# **Agente OCI V1: Inteligencia Artificial para Control de Operaciones Industriales**
 ---
 Este repositorio contiene el desarrollo de OCI Agent, un agente de Inteligencia Artificial diseñado bajo una arquitectura de flujo de trabajo inteligente (Agentic Workflow). Este asistente operativo y de HSE está diseñado específicamente para coordinar y mitigar riesgos en la gestión operativa de campos petroleros, utilizando Gemini 3.1 Flash-Lite como motor de razonamiento y LangGraph para la orquestación estructurada de estados.
 
